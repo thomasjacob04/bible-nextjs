@@ -14,9 +14,9 @@ function TestamentColumn({
 }) {
   return (
     <div>
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-4 pb-2 border-b border-[var(--border)]">
+      <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-4 pb-2 border-b border-[var(--border)]">
         {title}
-      </h2>
+      </h3>
       <ul className="space-y-0.5">
         {books.map((book) => {
           const meta = BOOK_META[book];
@@ -49,10 +49,10 @@ export default function HomePage() {
     <div className="min-h-screen bg-[var(--bg)]">
       {/* Header */}
       <header className="sticky top-0 z-30 bg-[var(--bg)] border-b border-[var(--border)] px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
+        <div className="mx-auto flex items-center gap-3">
           <BookOpen size={22} className="text-[var(--accent)]" />
           <h1 className="text-lg font-semibold text-[var(--text)]">
-            Holy Bible <span className="text-[var(--text-subtle)] font-normal text-sm">KJV</span>
+            Simple Bible <span className="text-[var(--text-subtle)] font-normal text-sm">KJV</span>
           </h1>
           <ThemeToggle />
         </div>

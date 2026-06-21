@@ -93,9 +93,9 @@ export default function BookReader({ db, book }: Props) {
               ref={(el) => { chapterRefs.current[ch] = el; }}
               className="mb-10"
             >
-              <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-4">
+              <h2 className="text-[var(--text-muted)] mb-4">
                 Chapter {ch}
-              </h3>
+              </h2>
               <div className="space-y-3">
                 {chapters[ch]?.map((v) => (
                   <p
