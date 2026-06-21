@@ -1,0 +1,532 @@
+<!-- JUst a reference of the visual layout and interactions on how each book is laid out and when user clicks on a book, the entire book loads up with a chapter slider on the right strip -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bible Books</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- SQL.js for client-side SQLite -->
+    <script src="https://sql.js.org/dist/sql-wasm.js"></script>
+    <!-- Client-side database handler -->
+    <script src="{{ url_for('static', filename='db-client.js') }}"></script>
+<style>
+    .book-summary {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    margin-bottom: 2rem;
+    border-radius: 0.5rem;
+}
+
+.book-summary h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #1f2937;
+}
+
+.book-summary pre {
+    white-space: pre-wrap;
+    font-family: inherit;
+    margin: 0;
+    color: #4b5563;
+    line-height: 1.5;
+}
+
+/* Recent chapters sidebar - sticky on left */
+.recent-sidebar {
+    position: fixed;
+  left: 16px;
+  top: 8rem;
+  width: 200px;
+  background: white;
+  border-right: 1px solid #e5e7eb;
+  overflow-y: auto;
+  padding: 1rem;
+  z-index: 9999;
+  border-radius: 12px;
+  box-shadow: 0px 1px 8px 1px #e5e5e5;
+}
+
+.recent-sidebar h3 {
+    margin: 0 0 1rem 0;
+    font-size: 0.875rem;
+    color: #6b7280;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.recent-sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.recent-sidebar li {
+    margin: 0.5rem 0;
+}
+
+.recent-sidebar a {
+    display: block;
+    padding: 0.5rem;
+    background: #f9fafb;
+    border-radius: 0 6px 6px 0;
+    color: #1f2937;
+    text-decoration: none;
+    font-size: 0.813rem;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+
+.recent-sidebar a:hover {
+    background: #f3f4f6;
+    border-left-color: #3b82f6;
+    transform: translateX(2px);
+}
+
+/* Adjust main content to account for left sidebar */
+.books-columns {
+    /* margin-left: 220px; */
+}
+
+@media (max-width: 768px) {
+    .recent-sidebar {
+        display: none;
+    }
+
+    .books-columns {
+        margin-left: 0;
+    }
+}
+</style>
+</head>
+<body>
+    <!-- Database Loading Indicator -->
+    <div id="db-loading" style="position: fixed; top: 0; left: 0; right: 0; background: #3b82f6; color: white; padding: 1rem; text-align: center; z-index: 10000; display: none;">
+        <span id="db-loading-text">📥 Loading Bible database...</span>
+        <div style="margin-top: 0.5rem; font-size: 0.875rem;" id="db-loading-progress"></div>
+    </div>
+
+    <!-- Recent Chapters Sidebar (Left) - Always show -->
+    <div class="recent-sidebar">
+        <h3>📖 Recent</h3>
+        <ul id="recent-chapters-list">
+            <!-- Will be populated by JavaScript -->
+        </ul>
+    </div>
+
+    <div class="header">
+        <div class="title">Bible Books</div>
+        {% if selected_book %}
+            <div id="breadcrumb" class="breadcrumb">
+                <span id="selected-book">{{ selected_book }}</span> > <span id="selected-chapter">Chapter 1</span>
+            </div>
+        </div>
+    <div class="container">
+            <div class="books-columns">
+                <div class="column">
+                    <h2>Chapters of {{ selected_book }}</h2>
+                    <div class="book-summary">
+                        <h3>Book Summary</h3>
+                        <pre id="book-summary-text">Loading summary...</pre>
+                        <script>
+                            fetch(`/book_summary?book={{ selected_book }}`)
+                                .then(response => response.json())
+                                .then(data => {
+                                    document.getElementById('book-summary-text').textContent = data.summary || 'Summary not available.';
+                                })
+                                .catch(error => {
+                                    console.error('Error fetching book summary:', error);
+                                    document.getElementById('book-summary-text').textContent = 'Error loading summary.';
+                                });
+                        </script>
+                    </div>
+                    <div id="chapters">
+                        {% if chapters %}
+                            {% for chapter_num, verses in chapters.items() %}
+                                <div id="chapter-{{ chapter_num }}" class="chapter">
+                                    <h3>Chapter {{ chapter_num }}</h3>
+                                    {% if first_visit %}
+                                    <span class="hand-pointing">👇</span>
+                                    {% endif %}
+                                    <div class="verses">     
+                                        {% for verse in verses %}
+                                            <p>{{ verse|safe }}</p>
+                                        {% endfor %}    
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p>No chapters available for this book.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="sidebar">
+                    <ul>
+                        {% for chapter in range(1, total_chapters + 1) %}
+                            <li><a href="#chapter-{{ chapter }}" onclick="loadChapter({{ chapter }}); adjustScroll(event, {{ chapter }});">{{ chapter }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        {% else %}
+            <div class="testaments-columns">
+                <div class="testament-column">
+                    <h2>Old Testament</h2>
+                    <ul>
+                        {% for book in books['Old Testament'] %}
+                            <li class="book"><a href="{{ url_for('book_chapters', book_name=book) }}">{{ book }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="testament-column">
+                    <h2>New Testament</h2>
+                    <ul>
+                        {% for book in books['New Testament'] %}
+                            <li class="book"><a href="{{ url_for('book_chapters', book_name=book) }}">{{ book }}</a></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+    <div id="bottom-sheet" class="bottom-sheet" onclick="redirectToHome()">
+        <div class="bottom-sheet-content">
+            <span id="analyse-text"></span>
+            <!-- <button onclick="closeBottomSheet()">Close</button> -->
+        </div>
+    </div>
+    <div class="bottom-menu">
+        <a href="{{ url_for('home') }}">
+            <span class="icon"><i class="fa-solid fa-church"></i></span>
+            <span class="menu-name">Sermon</span>
+        </a>
+        <a href="{{ url_for('books') }}">
+            <span class="icon active"><i class="fa-solid fa-book-open"></i></span>
+            <span class="menu-name active">Bible</span>
+        </a>
+        <a href="{{ url_for('devotionals') }}">
+            <span class="icon"><i class="fa-solid fa-star-of-life"></i></span>
+            <span class="menu-name">Pray</span>
+        </a>
+    </div>
+    <script>
+        // Check if database is already cached in IndexedDB
+        async function checkIfDatabaseCached() {
+            return new Promise((resolve) => {
+                const request = indexedDB.open('BibleDB', 1);
+
+                request.onerror = () => resolve(false);
+
+                request.onsuccess = (event) => {
+                    const db = event.target.result;
+
+                    if (!db.objectStoreNames.contains('database')) {
+                        db.close();
+                        resolve(false);
+                        return;
+                    }
+
+                    const transaction = db.transaction(['database'], 'readonly');
+                    const store = transaction.objectStore('database');
+                    const getRequest = store.get('kjv');
+
+                    getRequest.onsuccess = () => {
+                        db.close();
+                        resolve(getRequest.result ? true : false);
+                    };
+                    getRequest.onerror = () => {
+                        db.close();
+                        resolve(false);
+                    };
+                };
+
+                request.onupgradeneeded = () => {
+                    // Database doesn't exist yet
+                    resolve(false);
+                };
+            });
+        }
+
+        // Initialize client-side database on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            const loadingDiv = document.getElementById('db-loading');
+            const loadingText = document.getElementById('db-loading-text');
+            const loadingProgress = document.getElementById('db-loading-progress');
+
+            try {
+                // Check if database is already cached
+                const isCached = await checkIfDatabaseCached();
+
+                // Only show loading indicator if database is NOT cached
+                if (!isCached) {
+                    loadingDiv.style.display = 'block';
+                    loadingText.textContent = '📥 Downloading Bible database...';
+                    loadingProgress.textContent = 'This may take a moment (one-time download)';
+                }
+
+                // Initialize the database
+                await window.BibleDB.init();
+
+                // Only show success message if we downloaded for the first time
+                if (!isCached) {
+                    loadingText.textContent = '✅ Database downloaded!';
+                    loadingProgress.textContent = 'Cached for offline use';
+
+                    setTimeout(() => {
+                        loadingDiv.style.display = 'none';
+                    }, 2000);
+                }
+
+                console.log('Client-side database initialized successfully');
+            } catch (error) {
+                console.error('Failed to initialize database:', error);
+                loadingDiv.style.display = 'block';
+                loadingText.textContent = '❌ Failed to load database';
+                loadingProgress.textContent = 'Falling back to server-side queries';
+
+                setTimeout(() => {
+                    loadingDiv.style.display = 'none';
+                }, 3000);
+            }
+
+            // Load other chapters dynamically
+            const totalChapters = parseInt('{{ total_chapters }}');
+            // for (let i = 2; i <= totalChapters; i++) {
+            //     const chapterDiv = document.createElement('div');
+            //     chapterDiv.id = `chapter-${i}`;
+            //     chapterDiv.className = 'chapter';
+            //     chapterDiv.innerHTML = `<h3>Chapter ${i}</h3><div class="verses">Loading...</div>`;
+            //     document.getElementById('chapters').appendChild(chapterDiv);
+            // }
+
+            document.querySelectorAll('.verses p').forEach(verse => {
+                verse.addEventListener('click', function() {
+                    const verseNumber = Array.from(this.parentNode.children).indexOf(this) + 1;
+                    const verseText = this.textContent;
+                    const chapter = this.closest('.chapter').id.split('-')[1];
+                    const book = '{{ selected_book }}';
+                    document.getElementById('analyse-text').textContent = `Analyse ${book}, Chapter ${chapter}, Verse ${verseNumber}`;
+                    openBottomSheet();
+                });
+            });
+
+            // Load recent chapters into sidebar
+            loadRecentChapters();
+
+            // Restore session
+            restoreSession();
+
+            // Update breadcrumb on scroll
+            window.addEventListener('scroll', updateBreadcrumb);
+
+        });
+
+        function loadChapter(chapter) {
+            const book = '{{ selected_book }}';
+
+            // Save to recent chapters in localStorage
+            saveRecentChapter(book, chapter);
+
+            // Track chapter view in recent queries
+            fetch(`/track_chapter_view?book=${encodeURIComponent(book)}&chapter=${chapter}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log(`Tracked: ${data.reference}`);
+                        // Refresh the recent chapters sidebar
+                        loadRecentChapters();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error tracking chapter view:', error);
+                });
+
+            const chapterDiv = document.getElementById(`chapter-${chapter}`);
+            if (chapterDiv && chapterDiv.querySelector('.verses').innerHTML === 'Loading...') {
+                // Use client-side database if available, otherwise fall back to server
+                if (window.BibleDB && window.BibleDB.isReady()) {
+                    try {
+                        console.log(`Fetching chapter ${chapter} from client-side database`);
+                        const chapters = window.BibleDB.getChapters(book);
+                        const verses = chapters[chapter] || [];
+
+                        const versesDiv = chapterDiv.querySelector('.verses');
+                        versesDiv.innerHTML = '';
+                        verses.forEach(verse => {
+                            const p = document.createElement('p');
+                            p.innerHTML = verse; // Use innerHTML since verse contains HTML
+                            versesDiv.appendChild(p);
+                        });
+
+                        // Update the breadcrumb
+                        const selectedChapterElement = document.getElementById('selected-chapter');
+                        if (selectedChapterElement) {
+                            selectedChapterElement.textContent = `Chapter ${chapter}`;
+                        }
+                    } catch (error) {
+                        console.error('Error fetching from client-side database:', error);
+                        // Fall back to server
+                        fetchChapterFromServer(book, chapter, chapterDiv);
+                    }
+                } else {
+                    // Fall back to server
+                    fetchChapterFromServer(book, chapter, chapterDiv);
+                }
+            } else {
+                // Update the breadcrumb
+                const selectedChapterElement = document.getElementById('selected-chapter');
+                if (selectedChapterElement) {
+                    selectedChapterElement.textContent = `Chapter ${chapter}`;
+                }
+            }
+        }
+
+        // Helper function to fetch chapter from server (fallback)
+        function fetchChapterFromServer(book, chapter, chapterDiv) {
+            fetch(`/fetch_chapter?book=${encodeURIComponent(book)}&chapter=${chapter}`)
+                .then(response => response.json())
+                .then(data => {
+                    const versesDiv = chapterDiv.querySelector('.verses');
+                    versesDiv.innerHTML = '';
+                    data.verses.forEach(verse => {
+                        const p = document.createElement('p');
+                        p.textContent = verse;
+                        versesDiv.appendChild(p);
+                    });
+                    // Update the breadcrumb
+                    const selectedChapterElement = document.getElementById('selected-chapter');
+                    if (selectedChapterElement) {
+                        selectedChapterElement.textContent = `Chapter ${chapter}`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching chapter:', error);
+                });
+        }
+
+        function saveRecentChapter(book, chapter) {
+            // Get existing recent chapters from localStorage
+            let recentChapters = JSON.parse(localStorage.getItem('recentChapters') || '[]');
+
+            // Create reference string
+            const reference = `${book} ${chapter}`;
+
+            // Remove if already exists (to move to front)
+            recentChapters = recentChapters.filter(ref => ref !== reference);
+
+            // Add to beginning
+            recentChapters.unshift(reference);
+
+            // Keep only last 10
+            if (recentChapters.length > 10) {
+                recentChapters = recentChapters.slice(0, 10);
+            }
+
+            // Save back to localStorage
+            localStorage.setItem('recentChapters', JSON.stringify(recentChapters));
+        }
+
+        function loadRecentChapters() {
+            const recentList = document.getElementById('recent-chapters-list');
+            if (!recentList) return; // Exit if sidebar doesn't exist
+
+            // Get recent chapters from localStorage
+            const recentChapters = JSON.parse(localStorage.getItem('recentChapters') || '[]');
+
+            // Clear existing list
+            recentList.innerHTML = '';
+
+            // Populate list
+            if (recentChapters.length === 0) {
+                recentList.innerHTML = '<li style="color: #9ca3af; font-size: 0.75rem; padding: 0.5rem;">No recent chapters</li>';
+            } else {
+                recentChapters.forEach(reference => {
+                    const li = document.createElement('li');
+                    const a = document.createElement('a');
+                    // Parse reference like "Acts 2" into book and chapter
+                    const parts = reference.split(' ');
+                    const book = parts.slice(0, -1).join(' '); // Handle multi-word books like "1 John"
+                    const chapter = parts[parts.length - 1];
+                    a.href = `/books/${encodeURIComponent(book)}#chapter-${chapter}`;
+                    a.textContent = reference;
+                    li.appendChild(a);
+                    recentList.appendChild(li);
+                });
+            }
+        }
+
+        function loadAllChapters(start, end) {
+            for (let i = start; i <= end; i++) {
+                loadChapter(i);
+            }
+        }
+
+        function adjustScroll(event, chapter) {
+            event.preventDefault();
+            const chapterElement = document.getElementById(`chapter-${chapter}`);
+            const offset = 8 * parseFloat(getComputedStyle(document.documentElement).fontSize); // 10 rems
+            const top = chapterElement.getBoundingClientRect().top + window.pageYOffset - offset;
+            window.scrollTo({ top, behavior: 'auto' });
+        }
+
+        function updateBreadcrumb() {
+            const chapters = document.querySelectorAll('.chapter');
+            let currentChapter = 'Chapter 1';
+            chapters.forEach(chapter => {
+                const rect = chapter.getBoundingClientRect();
+                if (rect.top <= window.innerHeight / 2 && rect.bottom >= window.innerHeight / 2) {
+                    currentChapter = chapter.querySelector('h3').textContent;
+                }
+            });
+            document.getElementById('selected-chapter').textContent = currentChapter;
+        }
+
+
+        function saveSession(book, chapter) {
+            localStorage.setItem('currentBook', book);
+            localStorage.setItem('currentChapter', chapter);
+        }
+
+        function restoreSession() {
+            const book = localStorage.getItem('currentBook');
+            const chapter = localStorage.getItem('currentChapter');
+            if (book && chapter) {
+                document.getElementById('selected-book').textContent = book;
+                document.getElementById('selected-chapter').textContent = `Chapter ${chapter}`;
+                loadChapter(chapter);
+                adjustScroll(null, chapter);
+            }
+        }
+
+        function openBottomSheet() {
+            const bottomSheet = document.getElementById('bottom-sheet');
+            bottomSheet.style.display = 'block';
+            setTimeout(() => {
+                bottomSheet.classList.add('show');
+            }, 10); // Delay to trigger the transition
+
+            // Automatically close the bottom sheet after 8 seconds
+            setTimeout(closeBottomSheet, 8000);
+        }
+
+        function closeBottomSheet() {
+            const bottomSheet = document.getElementById('bottom-sheet');
+            bottomSheet.classList.remove('show');
+            setTimeout(() => {
+                bottomSheet.style.display = 'none';
+            }, 500); // Match the transition duration
+        }
+
+        function redirectToHome() {
+            const analyseText = document.getElementById('analyse-text').textContent;
+            const reference = analyseText.replace('Analyse ', '');
+            window.location.href = `/home?reference=${encodeURIComponent(reference)}`;
+        }
+    </script>
+
+</body>
+</html>
